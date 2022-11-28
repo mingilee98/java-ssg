@@ -1,4 +1,10 @@
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Random;
+import java.util.concurrent.CyclicBarrier;
 
 import javax.imageio.plugins.tiff.ExifTIFFTagSet;
 import javax.sql.rowset.spi.SyncResolver;
@@ -19,7 +25,7 @@ public class SSG {
     static int goalPos = 28;
 
     // simulation variables
-    static int simCount = 100;
+    static int simCount = 1;
     static int trialCount = 100;
     static int timestepCount = 100;
 
@@ -32,6 +38,11 @@ public class SSG {
     static double alpha = 0.1;
     static double gamma = 0.9;
     static double epsilon = 0.1;
+
+    // random variable
+    static Random rd = new Random(System.currentTimeMillis());
+
+    static String[] directions = { "up", "down", "left", "right", "nop" };
 
     public static Agent[] getAgentsUnder(Agent[] agents, int curPos) {
         Agent[] agentsUnder = new Agent[objSize];
@@ -108,6 +119,7 @@ public class SSG {
     public static int getDirection(int[] votes) {
         int[] sumOfWeight = new int[5]; // up, down, left, right, nop
 
+        // add up the votes
         for (int i = 0; i < objSize; i++) {
             int vote = votes[i];
             if (vote == 0)
@@ -138,7 +150,58 @@ public class SSG {
                 sumOfWeight[4] += 3;
         }
 
-        return -1;
+        // cancellation
+        Integer[] canceledSum = new Integer[5];
+        canceledSum[0] = sumOfWeight[0] - sumOfWeight[1];
+        canceledSum[1] = sumOfWeight[1] - sumOfWeight[0];
+        canceledSum[2] = sumOfWeight[2] - sumOfWeight[3];
+        canceledSum[3] = sumOfWeight[3] - sumOfWeight[2];
+        canceledSum[4] = sumOfWeight[4];
+
+        // get the max
+        List<Integer> maxValIndexes = new ArrayList<>();
+
+        int max = Collections.max(Arrays.asList(canceledSum));
+
+        for (int i = 0; i < canceledSum.length; i++) {
+            if (canceledSum[i] == max) {
+                maxValIndexes.add(i);
+            }
+        }
+
+        int randAction = rd.nextInt(maxValIndexes.size());
+
+        // System.out.println(Arrays.toString(sumOfWeight));
+        // System.out.println(Arrays.toString(canceledSum));
+
+        return maxValIndexes.get(randAction);
+    }
+
+    public static int getNextPos(int curPos, int direction) {
+        if (direction == 2 && (curPos - 1) % stateRowSize != 0) {
+            curPos--; // left
+        } else if (direction == 3 && (curPos - 1) % stateRowSize != (colSize - objWidth)) {
+            curPos++; // right
+        } else if (direction == 0 && (curPos - 1) / stateRowSize != 0) {
+            curPos -= stateRowSize; // up
+        } else if (direction == 1 && (curPos - 1) / stateRowSize != (rowSize - objHeight)) {
+            curPos += stateRowSize; // down
+        }
+
+        return curPos;
+    }
+
+    public static int getNextReward(int nextPos) {
+        int reward;
+        if ((nextPos - 1) % stateRowSize == 0 || (nextPos - 1)
+                % stateRowSize == (colSize - objWidth)) {
+            reward = -50; // edge
+        } else if (nextPos == goalPos) {
+            reward = 100; // goal
+        } else {
+            reward = -1; // default
+        }
+        return reward;
     }
 
     public static void main(String[] args) {
@@ -146,6 +209,7 @@ public class SSG {
         Agent agents[] = new Agent[gridSize];
         for (int i = 0; i < gridSize; i++) {
             agents[i] = new Agent(i + 1, alpha, gamma, epsilon, stateCount);
+            agents[i].initQTable();
         }
 
         // start simulation
@@ -153,25 +217,26 @@ public class SSG {
             // start trial
             for (int curTrial = 0; curTrial < trialCount; curTrial++) {
                 int curPos = initPos;
+                int steps = 0;
                 while (curPos != goalPos) {
-
+                    steps++;
                     // get the agents under the object
                     Agent agentsUnder[] = getAgentsUnder(agents, curPos);
-                    for (Agent a : agentsUnder) {
-                        System.out.println("Agents under:" + a.agentID);
-                    }
+                    // for (Agent a : agentsUnder) {
+                    // System.out.println("Agents under:" + a.agentID);
+                    // }
 
                     // get the agents by the object
                     Agent agentsBy[] = getAgentsBy(agents, curPos);
-                    for (Agent a : agentsBy) {
-                        if (a != null) {
-                            System.out.println("Agents by: " + a.agentID);
-                        }
-                    }
+                    // for (Agent a : agentsBy) {
+                    // if (a != null) {
+                    // System.out.println("Agents by: " + a.agentID);
+                    // }
+                    // }
 
                     // make everyone vote
                     for (Agent agent : agents) {
-                        agent.makeVote();
+                        agent.makeVote(curPos);
                     }
 
                     // get the votes from voters
@@ -189,16 +254,19 @@ public class SSG {
                     }
 
                     // determine the direction and calculate reward
+                    int direction = getDirection(votes);
+                    int nextPos = getNextPos(curPos, direction);
+                    int nextReward = getNextReward(nextPos);
 
-                    // voters gets the reward
+                    for (Agent agent : agents) {
+                        agent.getReward(nextReward);
+                        agent.updateQ(nextReward, curPos, nextPos);
+                    }
 
-                    // none-voters gets the reward
-
-                    // update q-table for the voters
-
-                    // update q-table for the none-voters
-
+                    curPos = nextPos;
+                    // System.out.println("current position: " + curPos);
                 }
+                System.out.println("trial " + curTrial + " is over with " + steps + " steps");
             }
         }
 
