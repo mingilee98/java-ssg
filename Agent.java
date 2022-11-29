@@ -11,15 +11,19 @@ public class Agent {
     double gamma;
     double epsilon;
 
-    static int actionCount = 5;
-    int stateCount;
+    // agent's action, reward, number of votes
     int action;
+    int reward;
+    int numOfVotes;
 
+    // q table
     double[][] qTable;
 
-    int reward;
-
+    // set random seed
     Random rd = new Random(System.currentTimeMillis());
+
+    static int actionCount = 5;
+    int stateCount;
 
     // create instance and initialize qtable
     public Agent(int agentID, double alpha, double gamma, double epsilon, int stateCount) {
@@ -28,6 +32,7 @@ public class Agent {
         this.gamma = gamma;
         this.epsilon = epsilon;
         this.stateCount = stateCount;
+        this.numOfVotes = 0;
     }
 
     void initQTable() {
@@ -58,7 +63,6 @@ public class Agent {
                 maxValue = qTable[state][i];
             }
         }
-        // System.out.println("MaxValue: " + maxValue);
 
         // add all the max values to the maxVals
         for (int i = 0; i < actionCount; i++) {
@@ -66,8 +70,6 @@ public class Agent {
                 maxValIndexes.add(i);
             }
         }
-
-        // System.out.println("MaxVals: " + maxVals);
 
         // return a random action among the actions that has the maximum q
         int randAction = rd.nextInt(maxValIndexes.size());

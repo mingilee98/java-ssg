@@ -4,7 +4,12 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Random;
+import java.util.StringJoiner;
 import java.util.concurrent.CyclicBarrier;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 
 import javax.imageio.plugins.tiff.ExifTIFFTagSet;
 import javax.sql.rowset.spi.SyncResolver;
@@ -25,46 +30,53 @@ public class SSG {
     static int goalPos = 28;
 
     // simulation variables
-    static int simCount = 1;
-    static int trialCount = 100;
+    static int simCount = 10;
+    static int trialCount = 1000;
     static int timestepCount = 100;
+
+    // learning variables
+    static double alpha = 0.1;
+    static double gamma = 0.9;
+    static double epsilon = 0.15;
+    static boolean decreasingEpsilon = true;
 
     // reward variables
     static int rewardGoal = 100;
     static int rewardEdge = -50;
     static int rewardElse = -1;
 
-    // learning variables
-    static double alpha = 0.1;
-    static double gamma = 0.9;
-    static double epsilon = 0.1;
-
-    // random variable
+    // set random seed
     static Random rd = new Random(System.currentTimeMillis());
 
+    // directions
     static String[] directions = { "up", "down", "left", "right", "nop" };
 
-    public static Agent[] getAgentsUnder(Agent[] agents, int curPos) {
+    // filename
+    static String filename = rowSize + "_" + colSize + "_" + epsilon + (decreasingEpsilon ? "decresaing" : "") + ".csv";
+
+    // gets the agents under the object
+    public static Agent[] getAgentsUnder(Agent[] agents, int curAgent) {
         Agent[] agentsUnder = new Agent[objSize];
 
         for (int i = 0; i < objSize; i++) {
             if (i != 0 && i % objWidth == 0) {
-                curPos = curPos + colSize - objWidth;
+                curAgent = curAgent + colSize - objWidth;
             }
-            agentsUnder[i] = agents[curPos - 1];
-            curPos++;
+            agentsUnder[i] = agents[curAgent - 1];
+            curAgent++;
         }
 
         return agentsUnder;
     }
 
-    public static Agent[] getAgentsBy(Agent[] agents, int curPos) {
+    // gets the agents by the object
+    public static Agent[] getAgentsBy(Agent[] agents, int curAgent) {
         int agentBySize = objWidth * 2 + objHeight * 2;
         Agent[] agentsBy = new Agent[agentBySize];
 
         // get up
         int index = 0;
-        int tempPos = curPos - colSize;
+        int tempPos = curAgent - colSize;
         while (index < objWidth) {
             // check out of bounds
             if (tempPos <= 0) {
@@ -76,7 +88,7 @@ public class SSG {
         }
 
         // get down
-        tempPos = curPos + colSize * 2;
+        tempPos = curAgent + colSize * 2;
         while (index < objWidth * 2) {
             // check out of bounds
             if (tempPos >= gridSize) {
@@ -88,10 +100,11 @@ public class SSG {
         }
 
         // get left
-        tempPos = curPos - 1;
+        tempPos = curAgent - 1;
+
         while (index < objWidth * 2 + objHeight) {
             // check out of bounds
-            if (tempPos % colSize == 0) {
+            if (curAgent % colSize == 1) {
                 index += objHeight;
                 break;
             }
@@ -100,11 +113,10 @@ public class SSG {
             index++;
         }
 
-        // get right
-        tempPos = curPos + objWidth;
+        tempPos = curAgent + objWidth;
         while (index < objWidth * 2 + objHeight * 2) {
             // check out of bounds
-            if (tempPos % colSize == 1) {
+            if ((curAgent + objWidth) % colSize == 1) {
                 index += objHeight;
                 break;
             }
@@ -116,6 +128,7 @@ public class SSG {
         return agentsBy;
     }
 
+    // gets the directions by computing the votes
     public static int getDirection(int[] votes) {
         int[] sumOfWeight = new int[5]; // up, down, left, right, nop
 
@@ -171,12 +184,10 @@ public class SSG {
 
         int randAction = rd.nextInt(maxValIndexes.size());
 
-        // System.out.println(Arrays.toString(sumOfWeight));
-        // System.out.println(Arrays.toString(canceledSum));
-
         return maxValIndexes.get(randAction);
     }
 
+    // get the next position on the grid based on the direction
     public static int getNextPos(int curPos, int direction) {
         if (direction == 2 && (curPos - 1) % stateRowSize != 0) {
             curPos--; // left
@@ -191,6 +202,7 @@ public class SSG {
         return curPos;
     }
 
+    // get the next reward based on the next position
     public static int getNextReward(int nextPos) {
         int reward;
         if ((nextPos - 1) % stateRowSize == 0 || (nextPos - 1)
@@ -204,35 +216,87 @@ public class SSG {
         return reward;
     }
 
-    public static void main(String[] args) {
-        // create agents
-        Agent agents[] = new Agent[gridSize];
-        for (int i = 0; i < gridSize; i++) {
-            agents[i] = new Agent(i + 1, alpha, gamma, epsilon, stateCount);
-            agents[i].initQTable();
+    // create file
+    public static File createFile() {
+        File file = null;
+        try {
+            file = new File(filename);
+            if (file.createNewFile()) {
+                System.out.println("File created: " + file.getName());
+            } else {
+                System.out.println("File already exists.");
+            }
+        } catch (IOException e) {
+            System.out.println("An error occurred.");
+            e.printStackTrace();
         }
+        return file;
+    }
+
+    // write to file
+    public static void writeToFile(String line) {
+        try {
+            FileWriter myWriter = new FileWriter(filename, true);
+            myWriter.write(line);
+            myWriter.close();
+        } catch (IOException e) {
+            System.out.println("An error occurred.");
+            e.printStackTrace();
+        }
+    }
+
+    // gets the agent ID at pos
+    public static int getAgentID(int pos) {
+        int rowIndex = (pos - 1) / stateRowSize;
+        int offset = (pos - 1) % stateRowSize;
+        return rowIndex * colSize + offset + 1;
+    }
+
+    public static void main(String[] args) {
+
+        // create file
+        File file = createFile();
 
         // start simulation
         for (int curSim = 0; curSim < simCount; curSim++) {
+            // create agents
+            Agent agents[] = new Agent[gridSize];
+            for (int i = 0; i < gridSize; i++) {
+                agents[i] = new Agent(i + 1, alpha, gamma, epsilon, stateCount);
+                agents[i].initQTable();
+            }
+
             // start trial
             for (int curTrial = 0; curTrial < trialCount; curTrial++) {
+                // create line for the file
+                StringJoiner line = new StringJoiner(" ");
+                line.add(String.valueOf(curSim + 1));
+                line.add(String.valueOf(curTrial + 1));
+
                 int curPos = initPos;
                 int steps = 0;
+                int totalReward = 0;
+
+                // set epsilon value if decreasing and reset number of votes
+                for (Agent agent : agents) {
+                    // if decreasing epsilon, change the epsilon value
+                    if (decreasingEpsilon) {
+                        agent.epsilon = agent.epsilon / (1 + Math.exp(curTrial / 2500 - 2));
+                    }
+                    agent.numOfVotes = 0;
+                }
+
                 while (curPos != goalPos) {
                     steps++;
+
+                    // get the agent at curPos
+                    int curAgent = getAgentID(curPos);
+
                     // get the agents under the object
-                    Agent agentsUnder[] = getAgentsUnder(agents, curPos);
-                    // for (Agent a : agentsUnder) {
-                    // System.out.println("Agents under:" + a.agentID);
-                    // }
+                    Agent agentsUnder[] = getAgentsUnder(agents, curAgent);
 
                     // get the agents by the object
-                    Agent agentsBy[] = getAgentsBy(agents, curPos);
-                    // for (Agent a : agentsBy) {
-                    // if (a != null) {
-                    // System.out.println("Agents by: " + a.agentID);
-                    // }
-                    // }
+                    Agent agentsBy[] = getAgentsBy(agents, curAgent);
 
                     // make everyone vote
                     for (Agent agent : agents) {
@@ -242,20 +306,26 @@ public class SSG {
                     // get the votes from voters
                     int[] votes = new int[agentsUnder.length + agentsBy.length];
                     int index = 0;
+
                     for (Agent agentUnder : agentsUnder) {
                         votes[index++] = agentUnder.action;
+                        agentUnder.numOfVotes++;
                     }
+
                     for (Agent agentBy : agentsBy) {
                         if (agentBy == null) {
                             votes[index++] = -1;
                             continue;
                         }
                         votes[index++] = agentBy.action;
+                        agentBy.numOfVotes++;
                     }
 
                     // determine the direction and calculate reward
                     int direction = getDirection(votes);
+
                     int nextPos = getNextPos(curPos, direction);
+
                     int nextReward = getNextReward(nextPos);
 
                     for (Agent agent : agents) {
@@ -263,10 +333,43 @@ public class SSG {
                         agent.updateQ(nextReward, curPos, nextPos);
                     }
 
+                    // checks the position of agents under and by for each timestep
+                    /*
+                     * line.add("Pos: ");
+                     * line.add(String.valueOf(curPos));
+                     * line.add("agents under: ");
+                     * 
+                     * for (Agent agentUnder : agentsUnder) {
+                     * line.add(String.valueOf(agentUnder.agentID));
+                     * }
+                     * 
+                     * line.add("agents by: ");
+                     * 
+                     * for (Agent agentBy : agentsBy) {
+                     * if (agentBy == null) {
+                     * continue;
+                     * }
+                     * line.add(String.valueOf(agentBy.agentID));
+                     * }
+                     */
+
+                    totalReward += nextReward;
                     curPos = nextPos;
-                    // System.out.println("current position: " + curPos);
                 }
-                System.out.println("trial " + curTrial + " is over with " + steps + " steps");
+
+                // write information to the line
+                line.add(String.valueOf(steps));
+                line.add(String.valueOf(totalReward));
+                for (int i = 0; i < gridSize; i++) {
+                    line.add(String.valueOf(agents[i].numOfVotes));
+                }
+                String lineString = line.toString();
+                lineString += "\n";
+                writeToFile(lineString);
+
+                System.out
+                        .println("simulation " + (curSim + 1) + " trial " + (curTrial + 1) + " is over with " + steps
+                                + " steps");
             }
         }
 
