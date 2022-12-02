@@ -15,24 +15,27 @@ public class Agent {
     int action;
     int reward;
     int numOfVotes;
-
+    Random rd;
     // q table
     double[][] qTable;
 
     // set random seed
-    Random rd = new Random(System.currentTimeMillis());
 
     static int actionCount = 5;
     int stateCount;
 
     // create instance and initialize qtable
-    public Agent(int agentID, double alpha, double gamma, double epsilon, int stateCount) {
+    public Agent(int agentID, double alpha, double gamma, double epsilon, int stateCount, long s) {
+
+        // long s = System.currentTimeMillis();
+        this.rd = new Random(s);
         this.agentID = agentID;
         this.alpha = alpha;
         this.gamma = gamma;
         this.epsilon = epsilon;
         this.stateCount = stateCount;
         this.numOfVotes = 0;
+        // System.out.println((s >> 5) << 5 + agentID);
     }
 
     void initQTable() {
@@ -79,8 +82,11 @@ public class Agent {
 
     int chooseEpsilonGreedy(int state) {
         double pos = rd.nextDouble();
-
+        // return (1);
         if (pos >= epsilon) {
+            // System.out.println(pos);
+            // System.out.println(epsilon);
+            // int a = 1 / 0;
             return getBestAction(state);
         } else {
             return rd.nextInt(actionCount);
@@ -109,6 +115,7 @@ public class Agent {
 
     public void makeVote(int state) {
         this.action = chooseEpsilonGreedy(state);
+
     }
 
 }
