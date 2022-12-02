@@ -20,19 +20,23 @@ public class SSG {
     static int rowSize = 7;
     static int colSize = 7;
     static int gridSize = rowSize * colSize;
-    static int edgeSize = 1;
+    static int edgeSize = 2;
     static int objWidth = 3;
     static int objHeight = 2;
     static int objSize = objWidth * objHeight;
     static int stateCount = (rowSize - objHeight + 1) * (colSize - objWidth + 1);
     static int stateRowSize = (colSize - objWidth + 1);
     static int initPos = 3;
-    static int goalPos = 28;
+    static int goalPos = initPos + (rowSize - 2) * (colSize - 2);
+
+    // static int goalPos = 4;
+    // static int initPos = goalPos + (rowSize - 2) * (colSize - 2);
 
     // simulation variables
-    static int simCount = 10;
-    static int trialCount = 1000;
-    static int timestepCount = 100;
+    static int simCount = 100;
+    static int trialCount = 4000;
+    static int maxStep = 10000;
+    // static int timestepCount = 100;
 
     // learning variables
     static double alpha = 0.1;
@@ -41,9 +45,9 @@ public class SSG {
     static boolean decreasingEpsilon = true;
 
     // reward variables
-    static int rewardGoal = 100;
+    static int rewardGoal = 10;
     static int rewardEdge = -50;
-    static int rewardElse = -1;
+    static int rewardElse = 0;
 
     // set random seed
     static Random rd = new Random(System.currentTimeMillis());
@@ -52,7 +56,8 @@ public class SSG {
     static String[] directions = { "up", "down", "left", "right", "nop" };
 
     // filename
-    static String filename = rowSize + "_" + colSize + "_" + epsilon + (decreasingEpsilon ? "decresaing" : "") + ".csv";
+    static String filename = rowSize + "_" + colSize + "_" + epsilon + (decreasingEpsilon ? "decreasing" : "")
+            + "original" + ".csv";
 
     // gets the agents under the object
     public static Agent[] getAgentsUnder(Agent[] agents, int curAgent) {
@@ -171,6 +176,12 @@ public class SSG {
         canceledSum[3] = sumOfWeight[3] - sumOfWeight[2];
         canceledSum[4] = sumOfWeight[4];
 
+        // canceledSum[0] = sumOfWeight[0];
+        // canceledSum[1] = sumOfWeight[1];
+        // canceledSum[2] = sumOfWeight[2];
+        // canceledSum[3] = sumOfWeight[3];
+        // canceledSum[4] = sumOfWeight[4];
+
         // get the max
         List<Integer> maxValIndexes = new ArrayList<>();
 
@@ -191,13 +202,26 @@ public class SSG {
     public static int getNextPos(int curPos, int direction) {
         if (direction == 2 && (curPos - 1) % stateRowSize != 0) {
             curPos--; // left
-        } else if (direction == 3 && (curPos - 1) % stateRowSize != (colSize - objWidth)) {
+        } else if (direction == 3 && (curPos - 1) % stateRowSize != (colSize -
+                objWidth)) {
             curPos++; // right
         } else if (direction == 0 && (curPos - 1) / stateRowSize != 0) {
             curPos -= stateRowSize; // up
-        } else if (direction == 1 && (curPos - 1) / stateRowSize != (rowSize - objHeight)) {
+        } else if (direction == 1 && (curPos - 1) / stateRowSize != (rowSize -
+                objHeight)) {
             curPos += stateRowSize; // down
         }
+        // if (direction == 2 && (curPos - 1) % stateRowSize != 0) {
+        // curPos--; // left
+        // } else if (direction == 3 && (curPos - 1) % stateRowSize != (colSize -
+        // objWidth)) {
+        // curPos++; // right
+        // } else if (direction == 0 && (curPos - 1) / stateRowSize != 0) {
+        // curPos -= stateRowSize; // up
+        // } else if (direction == 1 && (curPos - 1) / stateRowSize != (rowSize -
+        // objHeight)) {
+        // curPos += stateRowSize; // down
+        // }
 
         return curPos;
     }
@@ -207,11 +231,11 @@ public class SSG {
         int reward;
         if ((nextPos - 1) % stateRowSize == 0 || (nextPos - 1)
                 % stateRowSize == (colSize - objWidth)) {
-            reward = -50; // edge
+            reward = rewardEdge; // edge
         } else if (nextPos == goalPos) {
-            reward = 100; // goal
+            reward = rewardGoal; // goal
         } else {
-            reward = -1; // default
+            reward = rewardElse; // default
         }
         return reward;
     }
@@ -260,12 +284,14 @@ public class SSG {
         // start simulation
         for (int curSim = 0; curSim < simCount; curSim++) {
             // create agents
+            Random rd = new Random(System.currentTimeMillis());
             Agent agents[] = new Agent[gridSize];
             for (int i = 0; i < gridSize; i++) {
-                agents[i] = new Agent(i + 1, alpha, gamma, epsilon, stateCount);
+                agents[i] = new Agent(i + 1, alpha, gamma, epsilon, stateCount, rd.nextLong());
                 agents[i].initQTable();
             }
 
+            // int a = 1 / 0;
             // start trial
             for (int curTrial = 0; curTrial < trialCount; curTrial++) {
                 // create line for the file
@@ -279,14 +305,16 @@ public class SSG {
 
                 // set epsilon value if decreasing and reset number of votes
                 for (Agent agent : agents) {
-                    // if decreasing epsilon, change the epsilon value
-                    if (decreasingEpsilon) {
+                    if ((curTrial + 1) % 2 == 0) {// if even trial, only exploit
+                        agent.epsilon = 0.0;
+                    }
+                    if (decreasingEpsilon) { // if decreasing epsilon, change the epsilon value
                         agent.epsilon = agent.epsilon / (1 + Math.exp(curTrial / 2500 - 2));
                     }
                     agent.numOfVotes = 0;
                 }
 
-                while (curPos != goalPos) {
+                while (curPos != goalPos && maxStep > steps) {
                     steps++;
 
                     // get the agent at curPos
@@ -301,14 +329,15 @@ public class SSG {
                     // make everyone vote
                     for (Agent agent : agents) {
                         agent.makeVote(curPos);
+                        // System.out.print(agent.action + " ");
                     }
-
+                    // int a = 1 / 0;
                     // get the votes from voters
                     int[] votes = new int[agentsUnder.length + agentsBy.length];
                     int index = 0;
 
                     for (Agent agentUnder : agentsUnder) {
-                        votes[index++] = agentUnder.action;
+                        votes[index++] = rd.nextDouble() < 0.0001 ? rd.nextInt(5) : agentUnder.action;
                         agentUnder.numOfVotes++;
                     }
 
@@ -317,7 +346,7 @@ public class SSG {
                             votes[index++] = -1;
                             continue;
                         }
-                        votes[index++] = agentBy.action;
+                        votes[index++] = rd.nextDouble() < 0.0001 ? rd.nextInt(5) : agentBy.action;
                         agentBy.numOfVotes++;
                     }
 
@@ -329,29 +358,36 @@ public class SSG {
                     int nextReward = getNextReward(nextPos);
 
                     for (Agent agent : agents) {
-                        agent.getReward(nextReward);
-                        agent.updateQ(nextReward, curPos, nextPos);
+                        if ((curTrial + 1) % 2 == 1) {
+                            agent.getReward(nextReward);
+                            agent.updateQ(nextReward, curPos, nextPos);
+                        }
+
                     }
 
                     // checks the position of agents under and by for each timestep
-                    /*
-                     * line.add("Pos: ");
-                     * line.add(String.valueOf(curPos));
-                     * line.add("agents under: ");
-                     * 
-                     * for (Agent agentUnder : agentsUnder) {
-                     * line.add(String.valueOf(agentUnder.agentID));
-                     * }
-                     * 
-                     * line.add("agents by: ");
-                     * 
-                     * for (Agent agentBy : agentsBy) {
-                     * if (agentBy == null) {
-                     * continue;
-                     * }
-                     * line.add(String.valueOf(agentBy.agentID));
-                     * }
-                     */
+
+                    line.add("curPos: ");
+                    line.add(String.valueOf(curPos));
+                    line.add("direction: ");
+                    line.add(String.valueOf(direction));
+                    line.add("nextPos: ");
+                    line.add(String.valueOf(nextPos));
+
+                    // line.add("agents under: ");
+
+                    // for (Agent agentUnder : agentsUnder) {
+                    // line.add(String.valueOf(agentUnder.agentID));
+                    // }
+
+                    // line.add("agents by: ");
+
+                    // for (Agent agentBy : agentsBy) {
+                    // if (agentBy == null) {
+                    // continue;
+                    // }
+                    // line.add(String.valueOf(agentBy.agentID));
+                    // }
 
                     totalReward += nextReward;
                     curPos = nextPos;
@@ -370,6 +406,13 @@ public class SSG {
                 System.out
                         .println("simulation " + (curSim + 1) + " trial " + (curTrial + 1) + " is over with " + steps
                                 + " steps");
+                // if (curTrial + 1 == 1) {
+                // System.out.println("trial 1 " + Arrays.toString(agents[0].qTable[3]));
+                // }
+                // if (curTrial + 1 == 1000) {
+                // System.out.println("trial 100 " + Arrays.toString(agents[0].qTable[3]));
+                // }
+
             }
         }
 
